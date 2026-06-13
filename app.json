@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Owed to You",
+    "slug": "owed-to-you",
+    "scheme": "owedtoyou",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "headers": {
+            "Cross-Origin-Embedder-Policy": "credentialless",
+            "Cross-Origin-Opener-Policy": "same-origin"
+          }
+        }
+      ],
+      "expo-sqlite",
+      "@react-native-community/datetimepicker",
+      "expo-document-picker",
+      "expo-sharing",
+      "expo-status-bar"
+    ],
+    "android": {
+      "package": "com.anonymous.owedtoyou"
+    },
+    "ios": {
+      "bundleIdentifier": "com.anonymous.owedtoyou"
+    }
+  }
+}
