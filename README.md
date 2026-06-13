@@ -1,6 +1,6 @@
-# Owed to You
+# Money Sleuth
 
-An offline-first Expo mobile app for tracking money people owe you.
+An offline-first Expo mobile app for tracking capital, expenses, and money people owe you.
 
 ## Stack
 

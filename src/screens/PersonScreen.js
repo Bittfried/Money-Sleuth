@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Alert, ScrollView } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useData } from '../data/DataContext';
@@ -9,7 +10,7 @@ import Avatar from '../components/Avatar';
 export default function PersonScreen() {
   const router = useRouter();
   const { personId } = useLocalSearchParams();
-  const { people, balanceFor, entriesFor, removePerson } = useData();
+  const { people, balanceFor, entriesFor, removePerson, updatePerson, settings } = useData();
   const person = people.find((p) => p.id === personId);
 
   const balance = balanceFor(personId);
@@ -17,6 +18,26 @@ export default function PersonScreen() {
   const paidCount = entriesFor(personId, 'paid').length;
 
   if (!person) return null;
+
+  const choosePhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to change this profile picture.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (result.canceled) return;
+    const photo = result.assets[0].uri;
+    Alert.alert('Change profile picture?', `Use this new picture for ${person.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Change', onPress: () => updatePerson(personId, { photo }) },
+    ]);
+  };
 
   return (
     <ScrollView
@@ -30,7 +51,7 @@ export default function PersonScreen() {
           headerRight: () => (
             <Pressable
               onPress={() => {
-                Alert.alert('Remove person', `Remove ${person.name} and all their entries?`, [
+                Alert.alert('Remove person', `Remove ${person.name} from Credits? Their ledger will be retained so your usable amount does not change.`, [
                   { text: 'Cancel', style: 'cancel' },
                   {
                     text: 'Remove',
@@ -51,17 +72,22 @@ export default function PersonScreen() {
         }}
       />
       <View style={styles.profileCard}>
-        <Avatar name={person.name} photo={person.photo} size={88} />
+        <Pressable onPress={choosePhoto} style={styles.avatarButton} accessibilityLabel="Change profile picture">
+          <Avatar name={person.name} photo={person.photo} size={88} />
+          <View style={styles.cameraBadge}>
+            <Ionicons name="camera" size={14} color={theme.colors.surface} />
+          </View>
+        </Pressable>
         <Text style={styles.name}>{person.name}</Text>
 
         <View style={styles.balanceBlock}>
-          <Text style={styles.balanceLabel}>Currently owed</Text>
+          <Text style={styles.balanceLabel}>Currently owe</Text>
           <Text
             style={[styles.balanceValue, balance > 0 ? styles.owedText : styles.zeroText]}
             numberOfLines={1}
             adjustsFontSizeToFit
           >
-            {fmtCurrency(balance)}
+            {fmtCurrency(balance, settings.currency)}
           </Text>
         </View>
 
@@ -107,6 +133,23 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing(6),
     alignItems: 'center',
     gap: theme.spacing(2),
+  },
+  avatarButton: {
+    position: 'relative',
+    padding: theme.spacing(1),
+  },
+  cameraBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: theme.colors.surface,
   },
   name: {
     fontSize: 20,

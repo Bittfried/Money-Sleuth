@@ -11,14 +11,14 @@ import { theme } from '../theme';
 
 export default function BackupScreen() {
   const insets = useSafeAreaInsets();
-  const { exportData, importData, mergeData, people, entries } = useData();
+  const { exportData, importData, mergeData, people, entries, expenses } = useData();
   const [busy, setBusy] = useState(false);
 
   const handleExport = async () => {
     setBusy(true);
     try {
       const json = exportData();
-      const filename = `owed-to-you-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const filename = `money-sleuth-backup-${new Date().toISOString().slice(0, 10)}.json`;
       const uri = FileSystem.documentDirectory + filename;
       await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });
 
@@ -117,6 +117,10 @@ export default function BackupScreen() {
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{entries.length}</Text>
           <Text style={styles.statLabel}>Entries</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{expenses.length}</Text>
+          <Text style={styles.statLabel}>Expenses</Text>
         </View>
       </View>
 

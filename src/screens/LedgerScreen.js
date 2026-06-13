@@ -11,41 +11,25 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useData } from '../data/DataContext';
 import { theme, fmtCurrency, fmtDate } from '../theme';
 import Sheet from '../components/Sheet';
-
-const FILTERS = [
-  { key: 'all', label: 'All time' },
-  { key: 'week', label: 'This week' },
-  { key: 'month', label: 'This month' },
-];
-
-function inFilter(dateIso, filterKey) {
-  if (filterKey === 'all') return true;
-  const d = new Date(dateIso);
-  const now = new Date();
-  if (filterKey === 'month') {
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }
-  if (filterKey === 'week') {
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-    return d >= startOfWeek;
-  }
-  return true;
-}
+import DateFilter, { matchesDateFilter } from '../components/DateFilter';
+import AccountPicker from '../components/AccountPicker';
 
 export default function LedgerScreen() {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const compact = width < 390;
   const { personId, type = 'owed' } = useLocalSearchParams();
-  const { people, entriesFor, addEntry, markPaid, markOwed, editEntry, deleteEntry } = useData();
+  const { people, entriesFor, addEntry, receiveEntry, markOwed, editEntry, deleteEntry, settings, accounts } = useData();
   const name = people.find((person) => person.id === personId)?.name ?? 'Ledger';
 
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState({ type: 'all' });
+  const [payingId, setPayingId] = useState(null);
+  const [paidAccountId, setPaidAccountId] = useState(accounts[0]?.id);
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [amount, setAmount] = useState('');
@@ -57,7 +41,7 @@ export default function LedgerScreen() {
 
   const filtered = useMemo(() => {
     return entries
-      .filter((e) => inFilter(e.date, filter))
+      .filter((e) => matchesDateFilter(e.date, filter))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [entries, filter]);
 
@@ -106,33 +90,13 @@ export default function LedgerScreen() {
     setAddOpen(false);
   };
 
-  const onDateChange = (event, selected) => {
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (selected) setDate(selected);
-  };
-
   return (
-    <View style={styles.container}>
-      <Stack.Screen options={{ title: type === 'paid' ? `${name} · Paid` : `${name} · Owed` }} />
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => (
-          <Pressable
-            key={f.key}
-            style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
-            onPress={() => setFilter(f.key)}
-          >
-            <Text style={[styles.filterLabel, filter === f.key && styles.filterLabelActive]}>
-              {f.label}
-            </Text>
-          </Pressable>
-        ))}
-        {type === 'owed' && (
-          <Pressable style={styles.addChip} onPress={() => setAddOpen(true)}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + theme.spacing(3) }]}>
+      <Stack.Screen options={{ title: type === 'paid' ? `${name} - Paid` : `${name} - Owed` }} />
+      <DateFilter value={filter} onChange={setFilter} right={type === 'owed' && <Pressable style={styles.addChip} onPress={() => setAddOpen(true)}>
             <Ionicons name="add" size={16} color={theme.colors.surface} />
             <Text style={styles.addChipLabel}>Add</Text>
-          </Pressable>
-        )}
-      </View>
+          </Pressable>} />
 
       <View style={[styles.table, compact && styles.compactTable]}>
         {!compact && <View style={styles.headerRow}>
@@ -157,7 +121,7 @@ export default function LedgerScreen() {
               <View style={compact ? styles.compactInfo : styles.colDate}>
                 {compact && <Text style={styles.compactNote} numberOfLines={2}>{item.note}</Text>}
                 <Text style={[styles.cell, !compact && styles.colDate, styles.cellMuted]}>
-                  {fmtDate(item.date)}
+                  {fmtDate(item.date)}{type === 'paid' && item.paidAccountId ? ` · ${accounts.find((account) => account.id === item.paidAccountId)?.name}` : ''}
                 </Text>
               </View>
               {!compact && <Text style={[styles.cell, styles.colNote]} numberOfLines={1}>{item.note}</Text>}
@@ -169,7 +133,7 @@ export default function LedgerScreen() {
                   type === 'paid' && styles.amountPaid,
                 ]}
               >
-                {fmtCurrency(item.amount)}
+                {fmtCurrency(item.amount, settings.currency)}
               </Text>
               <View style={compact ? styles.compactAction : styles.colAction}>
                 {type === 'owed' ? (
@@ -177,7 +141,7 @@ export default function LedgerScreen() {
                     style={styles.markBtn}
                     onPress={(e) => {
                       e.stopPropagation?.();
-                      markPaid(item.id);
+                      setPayingId(item.id);
                     }}
                   >
                     <Text style={styles.markBtnText}>Paid</Text>
@@ -204,7 +168,7 @@ export default function LedgerScreen() {
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>{type === 'owed' ? 'Total owed' : 'Total settled'}</Text>
         <Text style={[styles.totalValue, type === 'owed' ? styles.amountText : styles.amountPaid]}>
-          {fmtCurrency(total)}
+          {fmtCurrency(total, settings.currency)}
         </Text>
       </View>
 
@@ -239,7 +203,11 @@ export default function LedgerScreen() {
             value={date}
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            onChange={onDateChange}
+            onValueChange={(_, selected) => {
+              setDate(selected);
+              if (Platform.OS === 'android') setShowDatePicker(false);
+            }}
+            onDismiss={() => setShowDatePicker(false)}
             maximumDate={new Date()}
           />
         )}
@@ -267,6 +235,13 @@ export default function LedgerScreen() {
           </Pressable>
         </View>
       </Sheet>
+      <Sheet visible={Boolean(payingId)} onClose={() => setPayingId(null)}>
+        <Text style={styles.sheetTitle}>Where was this paid?</Text>
+        <AccountPicker value={paidAccountId} onChange={setPaidAccountId} label="Receive into" />
+        <Pressable style={[styles.sheetBtn, styles.sheetBtnPrimary]} onPress={() => { receiveEntry(payingId, paidAccountId); setPayingId(null); }}>
+          <Text style={styles.sheetBtnPrimaryText}>Confirm paid</Text>
+        </Pressable>
+      </Sheet>
     </View>
   );
 }
@@ -276,33 +251,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.bg,
     padding: theme.spacing(4),
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing(2),
-    marginBottom: theme.spacing(3),
-    alignItems: 'center',
-  },
-  filterChip: {
-    paddingHorizontal: theme.spacing(3),
-    paddingVertical: theme.spacing(1.5),
-    borderRadius: theme.radius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.line,
-    backgroundColor: theme.colors.surface,
-  },
-  filterChipActive: {
-    backgroundColor: theme.colors.accent,
-    borderColor: theme.colors.accent,
-  },
-  filterLabel: {
-    fontSize: 12,
-    color: theme.colors.inkSoft,
-    fontWeight: '500',
-  },
-  filterLabelActive: {
-    color: theme.colors.surface,
   },
   addChip: {
     flexDirection: 'row',
@@ -391,10 +339,11 @@ const styles = StyleSheet.create({
     color: theme.colors.inkSoft,
   },
   colDate: {
-    flex: 1.1,
+    flex: 1.45,
+    paddingRight: theme.spacing(2),
   },
   colNote: {
-    flex: 1.6,
+    flex: 1.4,
     paddingRight: theme.spacing(1),
   },
   colAmount: {

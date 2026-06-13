@@ -26,7 +26,7 @@ const SORT_OPTIONS = [
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { people, balanceFor, addPerson, lastActivityFor } = useData();
+  const { people, balanceFor, addPerson, lastActivityFor, settings, totalOutstanding } = useData();
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState('');
   const [photo, setPhoto] = useState(null);
@@ -34,10 +34,7 @@ export default function HomeScreen() {
   const [sortBy, setSortBy] = useState('balance');
   const [sortOpen, setSortOpen] = useState(false);
 
-  const total = useMemo(
-    () => people.reduce((sum, p) => sum + balanceFor(p.id), 0),
-    [people, balanceFor]
-  );
+  const total = totalOutstanding;
 
   const lastActivityLabel = (personId) => {
     const date = lastActivityFor(personId);
@@ -81,7 +78,7 @@ export default function HomeScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.6,
       allowsEditing: true,
       aspect: [1, 1],
@@ -110,7 +107,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          title: 'Owed to You',
+          title: 'Credits',
           headerRight: () => (
             <Pressable
               onPress={() => router.push('/backup')}
@@ -164,7 +161,7 @@ export default function HomeScreen() {
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
-                  {fmtCurrency(total)}
+                  {fmtCurrency(total, settings.currency)}
                 </Text>
               </View>
             )}
@@ -202,7 +199,7 @@ export default function HomeScreen() {
                 numberOfLines={1}
                 adjustsFontSizeToFit
               >
-                {fmtCurrency(balance)}
+                {fmtCurrency(balance, settings.currency)}
               </Text>
             </Pressable>
           );
@@ -210,14 +207,14 @@ export default function HomeScreen() {
       />
 
       <Pressable
-        style={[styles.fab, { bottom: Math.max(insets.bottom, theme.spacing(5)) }]}
+        style={[styles.fab, { bottom: insets.bottom + theme.spacing(5) }]}
         onPress={() => setAddOpen(true)}
         accessibilityLabel="Add person"
       >
         <Ionicons name="add" size={28} color={theme.colors.surface} />
       </Pressable>
 
-      <Sheet visible={addOpen} onClose={closeAdd}>
+      <Sheet visible={addOpen} onClose={closeAdd} variant="center">
         <Text style={styles.sheetTitle}>Add person</Text>
 
         <Pressable style={styles.photoPicker} onPress={pickPhoto}>

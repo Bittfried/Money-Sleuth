@@ -1,9 +1,10 @@
 {
   "expo": {
-    "name": "Owed to You",
-    "slug": "owed-to-you",
-    "scheme": "owedtoyou",
+    "name": "Money Sleuth",
+    "slug": "money-sleuth",
+    "scheme": "moneysleuth",
     "version": "1.0.0",
+    "icon": "./assets/money-sleuth-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "plugins": [
@@ -23,10 +24,25 @@
       "expo-status-bar"
     ],
     "android": {
-      "package": "com.anonymous.owedtoyou"
+      "package": "com.anonymous.owedtoyou",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/money-sleuth-icon.png",
+        "backgroundColor": "#F7F4ED"
+      }
     },
     "ios": {
       "bundleIdentifier": "com.anonymous.owedtoyou"
+    },
+    "extra": {
+      "router": {
+        "headers": {
+          "Cross-Origin-Embedder-Policy": "credentialless",
+          "Cross-Origin-Opener-Policy": "same-origin"
+        }
+      },
+      "eas": {
+        "projectId": "0cc7f100-9ce2-4e00-af3d-72a653da3588"
+      }
     }
   }
 }
