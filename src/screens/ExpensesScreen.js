@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { fmtCurrency, fmtDate, theme } from '../theme';
 import Sheet from '../components/Sheet';
 import DateFilter, { matchesDateFilter } from '../components/DateFilter';
 import AccountPicker from '../components/AccountPicker';
+import { localDateISO, parseLocalDate } from '../date';
 
 export default function ExpensesScreen() {
   const insets = useSafeAreaInsets();
@@ -22,8 +23,12 @@ export default function ExpensesScreen() {
   const [showDate, setShowDate] = useState(false);
   const [accountId, setAccountId] = useState(accounts[0]?.id);
 
+  useEffect(() => {
+    if (accounts[0]) setAccountId((current) => current ?? accounts[0].id);
+  }, [accounts]);
+
   const visible = useMemo(
-    () => expenses.filter((expense) => matchesDateFilter(expense.date, filter)).sort((a, b) => new Date(b.date) - new Date(a.date)),
+    () => expenses.filter((expense) => matchesDateFilter(expense.date, filter)).sort((a, b) => b.date.localeCompare(a.date)),
     [expenses, filter]
   );
   const total = visible.reduce((sum, expense) => sum + expense.amount, 0);
@@ -33,13 +38,13 @@ export default function ExpensesScreen() {
   };
   const edit = (expense) => {
     setEditingId(expense.id); setAmount((expense.amount / 100).toString()); setNote(expense.note);
-    setDate(new Date(expense.date)); setAccountId(expense.accountId); setOpen(true);
+    setDate(parseLocalDate(expense.date)); setAccountId(expense.accountId); setOpen(true);
   };
   const save = () => {
     const numeric = Number.parseFloat(amount.replace(',', '.'));
     if (!numeric || numeric <= 0) return;
     if (!accountId) return;
-    const fields = { amount: Math.round(numeric * 100), note: note.trim() || 'Expense', date: date.toISOString().slice(0, 10), accountId };
+    const fields = { amount: Math.round(numeric * 100), note: note.trim() || 'Expense', date: localDateISO(date), accountId };
     if (editingId) editExpense(editingId, fields); else addExpense(fields);
     close();
   };
@@ -60,9 +65,9 @@ export default function ExpensesScreen() {
           <Pressable style={styles.row} onPress={() => edit(item)}>
             <View style={styles.info}>
               <Text style={styles.note}>{item.note}</Text>
-              <Text style={styles.date}>{fmtDate(item.date)} · {accounts.find((account) => account.id === item.accountId)?.name}</Text>
+              <Text style={styles.date}>{fmtDate(item.date)} / {accounts.find((account) => account.id === item.accountId)?.name}{item.recurringId ? ' / recurring' : ''}</Text>
             </View>
-            <Text style={styles.amount}>{fmtCurrency(item.amount, settings.currency)}</Text>
+            <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>{fmtCurrency(item.amount, settings.currency)}</Text>
           </Pressable>
         )}
       />
@@ -79,7 +84,7 @@ export default function ExpensesScreen() {
         <TextInput style={styles.input} value={note} onChangeText={setNote} placeholder="What was this for?" placeholderTextColor={theme.colors.inkFaint} />
         <Text style={styles.label}>Date</Text>
         <Pressable style={styles.input} onPress={() => setShowDate(true)}>
-          <Text style={styles.dateInput}>{fmtDate(date.toISOString())}</Text>
+          <Text style={styles.dateInput}>{fmtDate(localDateISO(date))}</Text>
         </Pressable>
         {showDate && (
           <DateTimePicker
@@ -88,7 +93,7 @@ export default function ExpensesScreen() {
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
             maximumDate={new Date()}
             onValueChange={(_, selected) => {
-              setDate(selected);
+              if (selected) setDate(selected);
               if (Platform.OS === 'android') setShowDate(false);
             }}
             onDismiss={() => setShowDate(false)}
@@ -119,7 +124,7 @@ const styles = StyleSheet.create({
   info: { flex: 1, minWidth: 0 },
   note: { fontSize: 14, fontWeight: '600', color: theme.colors.ink },
   date: { fontSize: 12, color: theme.colors.inkSoft, marginTop: 3 },
-  amount: { fontSize: 15, fontFamily: theme.fonts.mono, fontWeight: '600', color: theme.colors.owed },
+  amount: { maxWidth: '42%', fontSize: 15, fontFamily: theme.fonts.mono, fontWeight: '600', color: theme.colors.owed },
   empty: { color: theme.colors.inkSoft, textAlign: 'center', paddingTop: theme.spacing(12) },
   total: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderColor: theme.colors.line, paddingTop: theme.spacing(3) },
   totalLabel: { fontSize: 13, color: theme.colors.inkSoft },

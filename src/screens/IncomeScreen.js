@@ -1,16 +1,93 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useData } from '../data/DataContext';
 import { fmtCurrency, fmtDate, theme } from '../theme';
+import { localDateISO } from '../date';
 import AccountPicker from '../components/AccountPicker';
 import Sheet from '../components/Sheet';
+
 export default function IncomeScreen() {
   const insets = useSafeAreaInsets();
-  const { incomes, addIncome, accounts, settings } = useData(); const [open,setOpen]=useState(false); const [amount,setAmount]=useState(''); const [note,setNote]=useState(''); const [accountId,setAccountId]=useState(accounts[0]?.id);
-  const save=()=>{const value=Math.round((Number.parseFloat(amount)||0)*100);if(!value||!accountId)return;addIncome({amount:value,note:note.trim()||'Freelance wage',date:new Date().toISOString().slice(0,10),accountId});setOpen(false);setAmount('');setNote('');};
-  return <View style={styles.container}><Stack.Screen options={{title:'Freelance income'}}/><FlatList data={[...incomes].reverse()} keyExtractor={i=>i.id} contentContainerStyle={[styles.list,{paddingBottom:insets.bottom+80}]} ListEmptyComponent={<Text style={styles.empty}>No income recorded yet.</Text>} renderItem={({item})=><View style={styles.row}><View style={styles.info}><Text style={styles.note}>{item.note}</Text><Text style={styles.date}>{fmtDate(item.date)} · {accounts.find(a=>a.id===item.accountId)?.name}</Text></View><Text style={styles.amount}>+{fmtCurrency(item.amount,settings.currency)}</Text></View>}/><Pressable style={[styles.add,{bottom:insets.bottom+20}]} onPress={()=>setOpen(true)}><Ionicons name="add" size={22} color={theme.colors.surface}/></Pressable><Sheet visible={open} onClose={()=>setOpen(false)}><Text style={styles.title}>Add freelance income</Text><TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor={theme.colors.inkFaint}/><TextInput style={styles.input} value={note} onChangeText={setNote} placeholder="Where did it come from?" placeholderTextColor={theme.colors.inkFaint}/><AccountPicker value={accountId} onChange={setAccountId} label="Add to fund"/><Pressable style={styles.save} onPress={save}><Text style={styles.saveText}>Add income</Text></Pressable></Sheet></View>;
+  const { incomes, addIncome, accounts, settings } = useData();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [accountId, setAccountId] = useState(accounts[0]?.id);
+
+  useEffect(() => {
+    if (accounts[0]) setAccountId((current) => current ?? accounts[0].id);
+  }, [accounts]);
+
+  const close = () => {
+    setOpen(false);
+    setAmount('');
+    setNote('');
+  };
+
+  const save = () => {
+    const value = Math.round((Number.parseFloat(amount.replace(',', '.')) || 0) * 100);
+    if (!value || value < 0 || !accountId) return;
+    addIncome({
+      amount: value,
+      note: note.trim() || 'Freelance wage',
+      date: localDateISO(),
+      accountId,
+    });
+    close();
+  };
+
+  return (
+    <View style={styles.container}>
+      <Stack.Screen options={{ title: 'Freelance income' }} />
+      <FlatList
+        data={[...incomes].reverse()}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 80 }]}
+        ListEmptyComponent={<Text style={styles.empty}>No income recorded yet.</Text>}
+        renderItem={({ item }) => (
+          <View style={styles.row}>
+            <View style={styles.info}>
+              <Text style={styles.note} numberOfLines={2}>{item.note}</Text>
+              <Text style={styles.date} numberOfLines={1}>
+                {fmtDate(item.date)} / {accounts.find((account) => account.id === item.accountId)?.name ?? 'Unknown fund'}
+              </Text>
+            </View>
+            <Text style={styles.amount} numberOfLines={1}>+{fmtCurrency(item.amount, settings.currency)}</Text>
+          </View>
+        )}
+      />
+      <Pressable style={[styles.add, { bottom: insets.bottom + 20 }]} onPress={() => setOpen(true)} accessibilityLabel="Add freelance income">
+        <Ionicons name="add" size={22} color={theme.colors.surface} />
+      </Pressable>
+      <Sheet visible={open} onClose={close}>
+        <Text style={styles.title}>Add freelance income</Text>
+        <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" placeholderTextColor={theme.colors.inkFaint} />
+        <TextInput style={styles.input} value={note} onChangeText={setNote} placeholder="Where did it come from?" placeholderTextColor={theme.colors.inkFaint} />
+        <AccountPicker value={accountId} onChange={setAccountId} label="Add to fund" />
+        <Pressable style={[styles.save, (!amount || !accountId) && styles.disabled]} onPress={save} disabled={!amount || !accountId}>
+          <Text style={styles.saveText}>Add income</Text>
+        </Pressable>
+      </Sheet>
+    </View>
+  );
 }
-const styles=StyleSheet.create({container:{flex:1,backgroundColor:theme.colors.bg,padding:16},list:{gap:8},empty:{textAlign:'center',color:theme.colors.inkSoft,paddingTop:60},row:{flexDirection:'row',alignItems:'center',padding:14,borderWidth:1,borderColor:theme.colors.line,borderRadius:theme.radius.md,backgroundColor:theme.colors.surface},info:{flex:1},note:{fontWeight:'600',color:theme.colors.ink},date:{fontSize:12,color:theme.colors.inkSoft,marginTop:3},amount:{fontFamily:theme.fonts.mono,fontWeight:'700',color:theme.colors.settled},add:{position:'absolute',right:20,width:54,height:54,borderRadius:27,backgroundColor:theme.colors.accent,alignItems:'center',justifyContent:'center'},title:{fontSize:18,fontWeight:'600',marginBottom:16},input:{backgroundColor:theme.colors.surface,borderWidth:1,borderColor:theme.colors.line,borderRadius:theme.radius.md,padding:12,fontSize:16,marginBottom:12},save:{backgroundColor:theme.colors.accent,padding:13,borderRadius:theme.radius.md,alignItems:'center'},saveText:{color:theme.colors.surface,fontWeight:'600'}});
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.colors.bg, padding: 16 },
+  list: { gap: 8 },
+  empty: { textAlign: 'center', color: theme.colors.inkSoft, paddingTop: 60 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.md, backgroundColor: theme.colors.surface },
+  info: { flex: 1, minWidth: 0 },
+  note: { fontWeight: '600', color: theme.colors.ink },
+  date: { fontSize: 12, color: theme.colors.inkSoft, marginTop: 3 },
+  amount: { flexShrink: 1, fontFamily: theme.fonts.mono, fontWeight: '700', color: theme.colors.settled },
+  add: { position: 'absolute', right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: theme.colors.accent, alignItems: 'center', justifyContent: 'center' },
+  title: { color: theme.colors.ink, fontSize: 18, fontWeight: '600', marginBottom: 16 },
+  input: { color: theme.colors.ink, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.md, padding: 12, fontSize: 16, marginBottom: 12 },
+  save: { backgroundColor: theme.colors.accent, padding: 13, borderRadius: theme.radius.md, alignItems: 'center' },
+  saveText: { color: theme.colors.surface, fontWeight: '600' },
+  disabled: { opacity: 0.5 },
+});

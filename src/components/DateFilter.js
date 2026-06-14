@@ -20,11 +20,16 @@ const YEARS = Array.from({ length: 12 }, (_, index) => new Date().getFullYear() 
 export const matchesDateFilter = (iso, filter) => {
   const date = new Date(`${iso}T12:00:00`);
   const now = new Date();
+  if (Number.isNaN(date.getTime())) return false;
   if (filter.type === 'all') return true;
   if (filter.type === 'day') return date.toDateString() === now.toDateString();
   if (filter.type === 'week') {
-    const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0, 0, 0, 0);
-    return date >= start;
+    const start = new Date(now);
+    start.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+    return date >= start && date < end;
   }
   if (filter.type === 'month') return date.getMonth() === filter.month && date.getFullYear() === filter.year;
   return date.getFullYear() === filter.year;
@@ -52,7 +57,9 @@ export default function DateFilter({ value, onChange, right }) {
         </Pressable>
         {(value.type === 'month' || value.type === 'year') && (
           <Pressable style={styles.period} onPress={() => setPeriodOpen(true)}>
-            <Text style={styles.periodText}>{value.type === 'month' ? MONTHS[value.month].label : value.year}</Text>
+            <Text style={styles.periodText} numberOfLines={1}>
+              {value.type === 'month' ? MONTHS[value.month]?.label ?? 'Choose month' : value.year}
+            </Text>
             <Ionicons name="chevron-down" size={14} color={theme.colors.inkSoft} />
           </Pressable>
         )}
@@ -84,11 +91,11 @@ export default function DateFilter({ value, onChange, right }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(2), marginBottom: theme.spacing(3) },
+  row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: theme.spacing(2), marginBottom: theme.spacing(3) },
   dropdown: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(2), borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.surface, borderRadius: theme.radius.sm, paddingHorizontal: theme.spacing(3), height: 38 },
   dropdownText: { fontSize: 12, color: theme.colors.ink, fontWeight: '600' },
-  period: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.sm, paddingHorizontal: theme.spacing(2), height: 38 },
-  periodText: { fontSize: 12, color: theme.colors.inkSoft },
+  period: { maxWidth: 130, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.sm, paddingHorizontal: theme.spacing(2), height: 38 },
+  periodText: { flexShrink: 1, fontSize: 12, color: theme.colors.inkSoft },
   spacer: { flex: 1 },
   title: { fontSize: 18, fontWeight: '600', color: theme.colors.ink, marginBottom: theme.spacing(3) },
   option: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: theme.spacing(3), borderBottomWidth: 1, borderColor: theme.colors.line },

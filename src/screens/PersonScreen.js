@@ -9,13 +9,13 @@ import Avatar from '../components/Avatar';
 
 export default function PersonScreen() {
   const router = useRouter();
-  const { personId } = useLocalSearchParams();
+  const { personId, direction = 'receivable' } = useLocalSearchParams();
   const { people, balanceFor, entriesFor, removePerson, updatePerson, settings } = useData();
   const person = people.find((p) => p.id === personId);
 
-  const balance = balanceFor(personId);
-  const owedCount = entriesFor(personId, 'owed').length;
-  const paidCount = entriesFor(personId, 'paid').length;
+  const balance = balanceFor(personId, direction);
+  const owedCount = entriesFor(personId, 'owed', direction).length;
+  const paidCount = entriesFor(personId, 'paid', direction).length;
 
   if (!person) return null;
 
@@ -51,7 +51,7 @@ export default function PersonScreen() {
           headerRight: () => (
             <Pressable
               onPress={() => {
-                Alert.alert('Remove person', `Remove ${person.name} from Credits? Their ledger will be retained so your usable amount does not change.`, [
+                Alert.alert('Remove person', `Remove ${person.name} and their credit entries? Past money movements stay in history, and current money will not change.`, [
                   { text: 'Cancel', style: 'cancel' },
                   {
                     text: 'Remove',
@@ -81,7 +81,7 @@ export default function PersonScreen() {
         <Text style={styles.name}>{person.name}</Text>
 
         <View style={styles.balanceBlock}>
-          <Text style={styles.balanceLabel}>Currently owe</Text>
+          <Text style={styles.balanceLabel}>{direction === 'payable' ? 'You currently owe' : 'Currently owes you'}</Text>
           <Text
             style={[styles.balanceValue, balance > 0 ? styles.owedText : styles.zeroText]}
             numberOfLines={1}
@@ -94,16 +94,16 @@ export default function PersonScreen() {
         <View style={styles.actionsRow}>
           <Pressable
             style={[styles.actionBtn, styles.owedBtn]}
-            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'owed' } })}
+            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'owed', direction } })}
           >
             <Ionicons name="receipt-outline" size={20} color={theme.colors.owed} />
-            <Text style={[styles.actionLabel, styles.owedText]}>Owed</Text>
+            <Text style={[styles.actionLabel, styles.owedText]}>{direction === 'payable' ? 'Unpaid' : 'Owed'}</Text>
             <Text style={styles.actionCount}>{owedCount} entr{owedCount === 1 ? 'y' : 'ies'}</Text>
           </Pressable>
 
           <Pressable
             style={[styles.actionBtn, styles.paidBtn]}
-            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'paid' } })}
+            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'paid', direction } })}
           >
             <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.settled} />
             <Text style={[styles.actionLabel, styles.settledText]}>Paid</Text>

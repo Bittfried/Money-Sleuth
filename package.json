@@ -10,11 +10,11 @@
     "doctor": "npx expo-doctor",
     "build:dev:android": "npx eas-cli build --profile development --platform android",
     "build:preview:android": "npx eas-cli build --profile preview --platform android",
+    "build:apk": "npx eas-cli build --profile apk --platform android",
     "build:production": "npx eas-cli build --profile production --platform all"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
-    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.1.0",
     "expo": "~56.0.0",
     "expo-constants": "~56.0.18",
@@ -26,6 +26,7 @@
     "expo-linking": "~56.0.14",
     "expo-router": "~56.2.10",
     "expo-sharing": "~56.0.17",
+    "expo-splash-screen": "~56.0.10",
     "expo-sqlite": "~56.0.5",
     "expo-status-bar": "~56.0.4",
     "expo-system-ui": "~56.0.5",

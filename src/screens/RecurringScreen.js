@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { useData } from '../data/DataContext';
 import { fmtCurrency, fmtDate, theme } from '../theme';
 import AccountPicker from '../components/AccountPicker';
 import Sheet from '../components/Sheet';
+import { localDateISO } from '../date';
 
 const FREQUENCIES = ['weekly', 'monthly', 'yearly'];
 
@@ -17,8 +18,12 @@ export default function RecurringScreen() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [frequency, setFrequency] = useState('monthly');
-  const [nextDate, setNextDate] = useState(new Date().toISOString().slice(0, 10));
+  const [nextDate, setNextDate] = useState(localDateISO());
   const [accountId, setAccountId] = useState(accounts[0]?.id);
+
+  useEffect(() => {
+    if (accounts[0]) setAccountId((current) => current ?? accounts[0].id);
+  }, [accounts]);
 
   const save = () => {
     const value = Math.round((parseFloat(amount) || 0) * 100);
@@ -43,11 +48,14 @@ export default function RecurringScreen() {
               <Text style={styles.note}>{item.note}</Text>
               <Text style={styles.sub}>{item.frequency} / next {fmtDate(item.nextDate)} / {accounts.find((account) => account.id === item.accountId)?.name}</Text>
             </View>
-            <Text style={styles.amount}>{fmtCurrency(item.amount, settings.currency)}</Text>
+            <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>{fmtCurrency(item.amount, settings.currency)}</Text>
             <Pressable onPress={() => updateRecurringPayment(item.id, { active: !item.active })}>
               <Ionicons name={item.active ? 'pause-circle-outline' : 'play-circle-outline'} size={23} color={theme.colors.accent} />
             </Pressable>
-            <Pressable onPress={() => deleteRecurringPayment(item.id)}>
+            <Pressable onPress={() => Alert.alert('Delete recurring payment?', 'Future payments will no longer be added automatically.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete', style: 'destructive', onPress: () => deleteRecurringPayment(item.id) },
+            ])}>
               <Ionicons name="trash-outline" size={20} color={theme.colors.owed} />
             </Pressable>
           </View>
@@ -70,7 +78,7 @@ export default function RecurringScreen() {
         </View>
         <Text style={styles.label}>First payment date (YYYY-MM-DD)</Text>
         <TextInput style={styles.input} value={nextDate} onChangeText={setNextDate} />
-        <AccountPicker value={accountId} onChange={setAccountId} label="Deduct from" />
+        <AccountPicker value={accountId} onChange={setAccountId} label="Preferred payment fund" />
         <Pressable style={styles.save} onPress={save}><Text style={styles.saveText}>Save payment</Text></Pressable>
       </Sheet>
     </View>
@@ -82,10 +90,10 @@ const styles = StyleSheet.create({
   list: { gap: 8 },
   empty: { textAlign: 'center', color: theme.colors.inkSoft, paddingTop: 60 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.md, backgroundColor: theme.colors.surface },
-  info: { flex: 1 },
+  info: { flex: 1, minWidth: 0 },
   note: { fontWeight: '600' },
   sub: { fontSize: 11, color: theme.colors.inkSoft, marginTop: 3 },
-  amount: { fontFamily: theme.fonts.mono, color: theme.colors.owed, fontWeight: '600' },
+  amount: { maxWidth: '32%', fontFamily: theme.fonts.mono, color: theme.colors.owed, fontWeight: '600' },
   add: { position: 'absolute', right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: theme.colors.accent, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 18, fontWeight: '600', marginBottom: 14 },
   input: { borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.md, padding: 12, marginBottom: 12, backgroundColor: theme.colors.surface },

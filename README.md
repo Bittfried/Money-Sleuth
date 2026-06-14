@@ -44,11 +44,14 @@ npx expo prebuild --clean --platform android
 ## Builds
 
 ```bash
+npm run build:apk
 npm run build:preview:android
 npm run build:production
 ```
 
-The preview profile creates an internally distributable Android APK. The production profile creates store-ready builds.
+`npm run build:apk` creates a standalone, internally distributable Android APK. When EAS finishes, open its build link and download the APK. That file can be shared and installed directly; it does not need Expo Go, a development client, or `npm start`.
+
+The preview profile also creates an APK for testing. The production profile creates store-ready builds, which use Android App Bundles rather than directly installable APK files.
 
 ## Structure
 

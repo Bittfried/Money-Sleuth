@@ -16,6 +16,7 @@ import { useData } from '../data/DataContext';
 import { theme, fmtCurrency } from '../theme';
 import Avatar from '../components/Avatar';
 import Sheet from '../components/Sheet';
+import { parseLocalDate } from '../date';
 
 const SORT_OPTIONS = [
   { key: 'balance', label: 'Highest balance' },
@@ -26,7 +27,8 @@ const SORT_OPTIONS = [
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { people, balanceFor, addPerson, lastActivityFor, settings, totalOutstanding } = useData();
+  const { people, balanceFor, addPerson, lastActivityFor, settings, totalOutstanding, totalPayable } = useData();
+  const [direction, setDirection] = useState('receivable');
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState('');
   const [photo, setPhoto] = useState(null);
@@ -34,12 +36,12 @@ export default function HomeScreen() {
   const [sortBy, setSortBy] = useState('balance');
   const [sortOpen, setSortOpen] = useState(false);
 
-  const total = totalOutstanding;
+  const total = direction === 'receivable' ? totalOutstanding : totalPayable;
 
   const lastActivityLabel = (personId) => {
-    const date = lastActivityFor(personId);
+    const date = lastActivityFor(personId, direction);
     if (!date) return 'No activity yet';
-    const diffDays = Math.floor((Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor((Date.now() - parseLocalDate(date).getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays <= 0) return 'Last activity today';
     if (diffDays === 1) return 'Last activity yesterday';
     if (diffDays < 14) return `Last activity ${diffDays} days ago`;
@@ -55,21 +57,21 @@ export default function HomeScreen() {
     }
     const sorted = [...list];
     if (sortBy === 'balance') {
-      sorted.sort((a, b) => balanceFor(b.id) - balanceFor(a.id));
+      sorted.sort((a, b) => balanceFor(b.id, direction) - balanceFor(a.id, direction));
     } else if (sortBy === 'name') {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortBy === 'recent') {
       sorted.sort((a, b) => {
-        const da = lastActivityFor(a.id);
-        const db = lastActivityFor(b.id);
+        const da = lastActivityFor(a.id, direction);
+        const db = lastActivityFor(b.id, direction);
         if (!da && !db) return 0;
         if (!da) return 1;
         if (!db) return -1;
-        return new Date(db) - new Date(da);
+        return db.localeCompare(da);
       });
     }
     return sorted;
-  }, [people, query, sortBy, balanceFor, lastActivityFor]);
+  }, [people, query, sortBy, direction, balanceFor, lastActivityFor]);
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -105,20 +107,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: 'Credits',
-          headerRight: () => (
-            <Pressable
-              onPress={() => router.push('/backup')}
-              style={{ padding: theme.spacing(1) }}
-              accessibilityLabel="Backup and restore"
-            >
-              <Ionicons name="ellipsis-horizontal-circle-outline" size={22} color={theme.colors.inkSoft} />
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ title: 'Credits' }} />
       <FlatList
         data={visiblePeople}
         keyExtractor={(item) => item.id}
@@ -126,6 +115,14 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View>
+            <View style={styles.directionTabs}>
+              <Pressable style={[styles.directionTab, direction === 'receivable' && styles.directionTabActive]} onPress={() => setDirection('receivable')}>
+                <Text style={[styles.directionText, direction === 'receivable' && styles.directionTextActive]}>Owed to you</Text>
+              </Pressable>
+              <Pressable style={[styles.directionTab, direction === 'payable' && styles.directionTabActive]} onPress={() => setDirection('payable')}>
+                <Text style={[styles.directionText, direction === 'payable' && styles.directionTextActive]}>You owe</Text>
+              </Pressable>
+            </View>
             <View style={styles.searchRow}>
               <View style={styles.searchBox}>
                 <Ionicons name="search" size={16} color={theme.colors.inkFaint} />
@@ -155,7 +152,7 @@ export default function HomeScreen() {
 
             {people.length > 0 && (
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Total outstanding</Text>
+                <Text style={styles.totalLabel}>{direction === 'receivable' ? 'Total owed to you' : 'Total you owe'}</Text>
                 <Text
                   style={[styles.totalValue, total > 0 ? styles.owedText : styles.zeroText]}
                   numberOfLines={1}
@@ -178,16 +175,16 @@ export default function HomeScreen() {
             <Text style={styles.emptyBody}>
               {query
                 ? `No one named "${query}" yet.`
-                : 'Add someone to start tracking what they owe you.'}
+                : direction === 'receivable' ? 'Add someone to start tracking what they owe you.' : 'Add someone to start tracking what you owe them.'}
             </Text>
           </View>
         }
         renderItem={({ item }) => {
-          const balance = balanceFor(item.id);
+          const balance = balanceFor(item.id, direction);
           return (
             <Pressable
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-              onPress={() => router.push({ pathname: '/person/[personId]', params: { personId: item.id } })}
+              onPress={() => router.push({ pathname: '/person/[personId]', params: { personId: item.id, direction } })}
             >
               <Avatar name={item.name} photo={item.photo} size={48} />
               <View style={styles.cardInfo}>
@@ -277,6 +274,31 @@ const styles = StyleSheet.create({
   listContent: {
     padding: theme.spacing(4),
     paddingBottom: theme.spacing(24),
+  },
+  directionTabs: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: theme.radius.md,
+    padding: 3,
+    marginBottom: theme.spacing(3),
+  },
+  directionTab: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.radius.sm,
+  },
+  directionTabActive: {
+    backgroundColor: theme.colors.accent,
+  },
+  directionText: {
+    color: theme.colors.inkSoft,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  directionTextActive: {
+    color: theme.colors.surface,
   },
   searchRow: {
     flexDirection: 'row',

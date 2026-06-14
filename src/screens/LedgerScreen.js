@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -18,12 +18,13 @@ import { theme, fmtCurrency, fmtDate } from '../theme';
 import Sheet from '../components/Sheet';
 import DateFilter, { matchesDateFilter } from '../components/DateFilter';
 import AccountPicker from '../components/AccountPicker';
+import { localDateISO, parseLocalDate } from '../date';
 
 export default function LedgerScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compact = width < 390;
-  const { personId, type = 'owed' } = useLocalSearchParams();
+  const { personId, type = 'owed', direction = 'receivable' } = useLocalSearchParams();
   const { people, entriesFor, addEntry, receiveEntry, markOwed, editEntry, deleteEntry, settings, accounts } = useData();
   const name = people.find((person) => person.id === personId)?.name ?? 'Ledger';
 
@@ -35,14 +36,21 @@ export default function LedgerScreen() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date());
+  const [sourceAccountId, setSourceAccountId] = useState(accounts[0]?.id);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const entries = entriesFor(personId, type);
+  useEffect(() => {
+    if (!accounts[0]) return;
+    setSourceAccountId((current) => current ?? accounts[0].id);
+    setPaidAccountId((current) => current ?? accounts[0].id);
+  }, [accounts]);
+
+  const entries = entriesFor(personId, type, direction);
 
   const filtered = useMemo(() => {
     return entries
       .filter((e) => matchesDateFilter(e.date, filter))
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
+      .sort((a, b) => b.date.localeCompare(a.date));
   }, [entries, filter]);
 
   const total = useMemo(() => filtered.reduce((sum, e) => sum + e.amount, 0), [filtered]);
@@ -51,6 +59,7 @@ export default function LedgerScreen() {
     setAmount('');
     setNote('');
     setDate(new Date());
+    setSourceAccountId(accounts[0]?.id);
     setEditingId(null);
   };
 
@@ -58,7 +67,8 @@ export default function LedgerScreen() {
     setEditingId(entry.id);
     setAmount((entry.amount / 100).toString());
     setNote(entry.note);
-    setDate(new Date(entry.date));
+    setDate(parseLocalDate(entry.date));
+    setSourceAccountId(entry.sourceAccountId ?? accounts[0]?.id);
     setAddOpen(true);
   };
 
@@ -69,14 +79,17 @@ export default function LedgerScreen() {
       editEntry(editingId, {
         amount: Math.round(numeric * 100),
         note: note.trim() || 'Entry',
-        date: date.toISOString().slice(0, 10),
+        date: localDateISO(date),
+        sourceAccountId: direction === 'receivable' ? sourceAccountId : null,
       });
     } else {
       addEntry(personId, {
         amount: Math.round(numeric * 100),
         note: note.trim() || 'Entry',
-        date: date.toISOString().slice(0, 10),
+        date: localDateISO(date),
         status: 'owed',
+        direction,
+        sourceAccountId: direction === 'receivable' ? sourceAccountId : null,
       });
     }
     resetForm();
@@ -92,7 +105,7 @@ export default function LedgerScreen() {
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + theme.spacing(3) }]}>
-      <Stack.Screen options={{ title: type === 'paid' ? `${name} - Paid` : `${name} - Owed` }} />
+      <Stack.Screen options={{ title: type === 'paid' ? `${name} - Paid` : `${name} - ${direction === 'payable' ? 'Unpaid' : 'Owed'}` }} />
       <DateFilter value={filter} onChange={setFilter} right={type === 'owed' && <Pressable style={styles.addChip} onPress={() => setAddOpen(true)}>
             <Ionicons name="add" size={16} color={theme.colors.surface} />
             <Text style={styles.addChipLabel}>Add</Text>
@@ -112,7 +125,7 @@ export default function LedgerScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>
-                {type === 'owed' ? 'No outstanding entries for this period.' : 'No paid entries for this period.'}
+                {type === 'owed' ? `No ${direction === 'payable' ? 'unpaid debts' : 'outstanding entries'} for this period.` : 'No paid entries for this period.'}
               </Text>
             </View>
           }
@@ -121,7 +134,9 @@ export default function LedgerScreen() {
               <View style={compact ? styles.compactInfo : styles.colDate}>
                 {compact && <Text style={styles.compactNote} numberOfLines={2}>{item.note}</Text>}
                 <Text style={[styles.cell, !compact && styles.colDate, styles.cellMuted]}>
-                  {fmtDate(item.date)}{type === 'paid' && item.paidAccountId ? ` · ${accounts.find((account) => account.id === item.paidAccountId)?.name}` : ''}
+                  {fmtDate(item.date)}
+                  {direction === 'receivable' && item.sourceAccountId ? ` / from ${accounts.find((account) => account.id === item.sourceAccountId)?.name ?? 'Unknown fund'}` : ''}
+                  {type === 'paid' && item.paidAccountId ? ` / ${direction === 'payable' ? 'from' : 'to'} ${accounts.find((account) => account.id === item.paidAccountId)?.name ?? 'Unknown fund'}` : ''}
                 </Text>
               </View>
               {!compact && <Text style={[styles.cell, styles.colNote]} numberOfLines={1}>{item.note}</Text>}
@@ -144,7 +159,7 @@ export default function LedgerScreen() {
                       setPayingId(item.id);
                     }}
                   >
-                    <Text style={styles.markBtnText}>Paid</Text>
+                    <Text style={styles.markBtnText}>{direction === 'payable' ? 'Pay' : 'Paid'}</Text>
                   </Pressable>
                 ) : (
                   <Pressable
@@ -166,7 +181,7 @@ export default function LedgerScreen() {
       </View>
 
       <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>{type === 'owed' ? 'Total owed' : 'Total settled'}</Text>
+        <Text style={styles.totalLabel}>{type === 'owed' ? (direction === 'payable' ? 'Total unpaid' : 'Total owed') : 'Total settled'}</Text>
         <Text style={[styles.totalValue, type === 'owed' ? styles.amountText : styles.amountPaid]}>
           {fmtCurrency(total, settings.currency)}
         </Text>
@@ -196,7 +211,7 @@ export default function LedgerScreen() {
 
         <Text style={styles.fieldLabel}>Date</Text>
         <Pressable style={styles.input} onPress={() => setShowDatePicker(true)}>
-          <Text style={{ color: theme.colors.ink, fontSize: 16 }}>{fmtDate(date.toISOString())}</Text>
+          <Text style={{ color: theme.colors.ink, fontSize: 16 }}>{fmtDate(localDateISO(date))}</Text>
         </Pressable>
         {showDatePicker && (
           <DateTimePicker
@@ -204,13 +219,15 @@ export default function LedgerScreen() {
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
             onValueChange={(_, selected) => {
-              setDate(selected);
+              if (selected) setDate(selected);
               if (Platform.OS === 'android') setShowDatePicker(false);
             }}
             onDismiss={() => setShowDatePicker(false)}
             maximumDate={new Date()}
           />
         )}
+
+        {direction === 'receivable' && <AccountPicker value={sourceAccountId} onChange={setSourceAccountId} label="Taken from" />}
 
         {editingId && (
           <Pressable style={styles.deleteRow} onPress={removeEntry}>
@@ -227,19 +244,19 @@ export default function LedgerScreen() {
             <Text style={styles.sheetBtnGhostText}>Cancel</Text>
           </Pressable>
           <Pressable
-            style={[styles.sheetBtn, styles.sheetBtnPrimary, !amount && styles.sheetBtnDisabled]}
+            style={[styles.sheetBtn, styles.sheetBtnPrimary, (!amount || (direction === 'receivable' && !sourceAccountId)) && styles.sheetBtnDisabled]}
             onPress={submitAdd}
-            disabled={!amount}
+            disabled={!amount || (direction === 'receivable' && !sourceAccountId)}
           >
             <Text style={styles.sheetBtnPrimaryText}>{editingId ? 'Save changes' : 'Add entry'}</Text>
           </Pressable>
         </View>
       </Sheet>
       <Sheet visible={Boolean(payingId)} onClose={() => setPayingId(null)}>
-        <Text style={styles.sheetTitle}>Where was this paid?</Text>
-        <AccountPicker value={paidAccountId} onChange={setPaidAccountId} label="Receive into" />
+        <Text style={styles.sheetTitle}>{direction === 'payable' ? 'How will you pay this?' : 'Where was this paid?'}</Text>
+        <AccountPicker value={paidAccountId} onChange={setPaidAccountId} label={direction === 'payable' ? 'Pay from' : 'Receive into'} />
         <Pressable style={[styles.sheetBtn, styles.sheetBtnPrimary]} onPress={() => { receiveEntry(payingId, paidAccountId); setPayingId(null); }}>
-          <Text style={styles.sheetBtnPrimaryText}>Confirm paid</Text>
+          <Text style={styles.sheetBtnPrimaryText}>{direction === 'payable' ? 'Confirm payment' : 'Confirm paid'}</Text>
         </Pressable>
       </Sheet>
     </View>
