@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,9 +17,10 @@ const VISUAL_MODES = ['light', 'night', 'dark'];
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { settings, updateSettings, budgetableSpendable, budgetSummary } = useData();
+  const { settings, updateSettings, budgetableSpendable, budgetSummary, resetData } = useData();
   const colors = getTheme(settings.themeMode).colors;
   const [customCurrency, setCustomCurrency] = useState('');
+  const [resetSelections, setResetSelections] = useState({});
   const customBudget = settings.customBudget ?? { enabled: false, startDate: null, endDate: null };
   const piggyBank = settings.piggyBank ?? { autoEnabled: false, accountId: null };
   const selectedSummary = settings.budgetMode ? budgetSummary[settings.budgetMode] : null;
@@ -88,6 +89,8 @@ export default function SettingsScreen() {
       <ManageRow label="Fund accounts" onPress={() => router.push('/funds')} />
       <ManageRow label="Recurring payments" onPress={() => router.push('/recurring')} />
       <ManageRow label="Backup & restore" onPress={() => router.push('/backup')} />
+
+      <ResetSection selections={resetSelections} setSelections={setResetSelections} onReset={resetData} />
     </ScrollView>
   );
 }
@@ -106,6 +109,66 @@ function ManageRow({ label, onPress }) {
 }
 function DateField({ label, value, onChange }) {
   return <View style={styles.dateField}><Text style={styles.label}>{label}</Text><TextInput style={styles.input} value={value ?? ''} onChangeText={onChange} placeholder="YYYY-MM-DD" /></View>;
+}
+
+const RESET_OPTIONS = [
+  { key: 'all', label: 'Everything', hint: 'Wipe all data and start fresh' },
+  { key: 'funds', label: 'Fund accounts', hint: 'Reset all account balances' },
+  { key: 'credits', label: 'Credits & debts', hint: 'Remove all people and entries' },
+  { key: 'expenses', label: 'Expenses', hint: 'Clear expense history' },
+  { key: 'income', label: 'Income', hint: 'Clear income records' },
+  { key: 'recurring', label: 'Recurring payments', hint: 'Remove scheduled payments' },
+  { key: 'piggyBank', label: 'Piggybank', hint: 'Empty piggybank savings' },
+  { key: 'history', label: 'Transaction history', hint: 'Clear movement log' },
+  { key: 'settings', label: 'Settings', hint: 'Reset preferences to defaults' },
+];
+
+function ResetSection({ selections, setSelections, onReset }) {
+  const toggleSelection = (key) => {
+    setSelections((prev) => {
+      if (key === 'all') return prev.all ? {} : { all: true };
+      const next = { ...prev, all: false, [key]: !prev[key] };
+      if (!next[key]) delete next[key];
+      delete next.all;
+      return next;
+    });
+  };
+  const selectedGroups = Object.keys(selections).filter((key) => selections[key]);
+  const hasSelection = selectedGroups.length > 0;
+
+  const confirmReset = () => {
+    const label = selections.all ? 'everything' : selectedGroups.map((key) => RESET_OPTIONS.find((o) => o.key === key)?.label ?? key).join(', ');
+    Alert.alert(
+      'Reset data',
+      `Are you sure you want to reset ${label}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: () => { onReset(selectedGroups); setSelections({}); } },
+      ],
+    );
+  };
+
+  return (
+    <>
+      <Text style={styles.heading}>Reset</Text>
+      <View style={styles.box}>
+        <Text style={styles.hint}>Choose what you want to reset. Create a backup first if needed.</Text>
+        {RESET_OPTIONS.map((option) => (
+          <Pressable key={option.key} style={styles.resetRow} onPress={() => toggleSelection(option.key)}>
+            <Ionicons name={selections[option.key] ? 'checkbox' : 'square-outline'} size={22} color={selections[option.key] ? theme.colors.owed : theme.colors.inkSoft} />
+            <View style={styles.resetLabel}>
+              <Text style={styles.rowTitle}>{option.label}</Text>
+              <Text style={styles.hint}>{option.hint}</Text>
+            </View>
+          </Pressable>
+        ))}
+        <Pressable style={[styles.resetButton, !hasSelection && styles.resetButtonDisabled]} onPress={hasSelection ? confirmReset : undefined} disabled={!hasSelection}>
+          <Ionicons name="trash-outline" size={16} color="#fff" />
+          <Text style={styles.resetButtonText}>Reset selected</Text>
+        </Pressable>
+      </View>
+    </>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -134,4 +197,9 @@ const styles = StyleSheet.create({
   custom: { flexDirection: 'row', gap: 8 },
   customInput: { flex: 1 },
   use: { backgroundColor: theme.colors.accent, paddingHorizontal: 20, justifyContent: 'center', borderRadius: theme.radius.md },
+  resetRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  resetLabel: { flex: 1, gap: 2 },
+  resetButton: { backgroundColor: theme.colors.owed, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: theme.radius.md, marginTop: 6 },
+  resetButtonDisabled: { opacity: 0.4 },
+  resetButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

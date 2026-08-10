@@ -1,10 +1,11 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -16,6 +17,11 @@ export default function Sheet({ visible, onClose, children, variant = 'bottom' }
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(0)).current;
   const centered = variant === 'center';
+
+  useEffect(() => {
+    if (visible) translateY.setValue(0);
+  }, [translateY, visible]);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) =>
@@ -34,14 +40,15 @@ export default function Sheet({ visible, onClose, children, variant = 'bottom' }
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.modal} onTouchEnd={onClose}>
+      <View style={styles.modal}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[styles.avoider, centered && styles.avoiderCentered]}
           pointerEvents="box-none"
         >
           <Animated.View
-            onTouchEnd={(event) => event.stopPropagation()}
+            onStartShouldSetResponder={() => true}
             style={[
               styles.panel,
               centered ? styles.dialog : styles.sheet,
@@ -54,7 +61,12 @@ export default function Sheet({ visible, onClose, children, variant = 'bottom' }
                 <View style={styles.handle} />
               </View>
             )}
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
               {children}
             </ScrollView>
           </Animated.View>

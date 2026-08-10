@@ -34,7 +34,8 @@
             "image": "./assets/money-sleuth-icon.png"
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "android": {
       "package": "com.anonymous.owedtoyou",

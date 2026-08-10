@@ -7,6 +7,7 @@ import {
   StyleSheet,
   TextInput,
   Platform,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,11 +26,16 @@ export default function LedgerScreen() {
   const insets = useSafeAreaInsets();
   const compact = width < 390;
   const { personId, type = 'owed', direction = 'receivable' } = useLocalSearchParams();
-  const { people, entriesFor, addEntry, receiveEntry, markOwed, editEntry, deleteEntry, settings, accounts } = useData();
+  const { people, entriesFor, addEntry, receiveEntry, receiveEntriesForPerson, markOwed, editEntry, deleteEntry, settings, accounts } = useData();
   const name = people.find((person) => person.id === personId)?.name ?? 'Ledger';
+  const payable = direction === 'payable';
+  const owedLabel = payable ? 'Owe' : 'Owed';
+  const settledLabel = payable ? 'Paid' : 'Returns';
+  const bulkLabel = payable ? 'Paid all' : 'Returned all';
 
   const [filter, setFilter] = useState({ type: 'all' });
   const [payingId, setPayingId] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [paidAccountId, setPaidAccountId] = useState(accounts[0]?.id);
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -54,6 +60,7 @@ export default function LedgerScreen() {
   }, [entries, filter]);
 
   const total = useMemo(() => filtered.reduce((sum, e) => sum + e.amount, 0), [filtered]);
+  const bulkEntryIds = useMemo(() => filtered.map((entry) => entry.id), [filtered]);
 
   const resetForm = () => {
     setAmount('');
@@ -102,14 +109,33 @@ export default function LedgerScreen() {
     resetForm();
     setAddOpen(false);
   };
+  const confirmBulk = () => {
+    if (!paidAccountId || bulkEntryIds.length === 0) return;
+    Alert.alert(`${bulkLabel}?`, `${bulkLabel} ${bulkEntryIds.length} entr${bulkEntryIds.length === 1 ? 'y' : 'ies'} for ${name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: bulkLabel,
+        onPress: () => {
+          receiveEntriesForPerson(personId, direction, paidAccountId, bulkEntryIds);
+          setBulkOpen(false);
+        },
+      },
+    ]);
+  };
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + theme.spacing(3) }]}>
-      <Stack.Screen options={{ title: type === 'paid' ? `${name} - Paid` : `${name} - ${direction === 'payable' ? 'Unpaid' : 'Owed'}` }} />
-      <DateFilter value={filter} onChange={setFilter} right={type === 'owed' && <Pressable style={styles.addChip} onPress={() => setAddOpen(true)}>
+      <Stack.Screen options={{ title: `${name} - ${type === 'paid' ? settledLabel : owedLabel}` }} />
+      <DateFilter value={filter} onChange={setFilter} right={type === 'owed' && <View style={styles.filterActions}>
+        <Pressable style={styles.addChip} onPress={() => setAddOpen(true)}>
             <Ionicons name="add" size={16} color={theme.colors.surface} />
             <Text style={styles.addChipLabel}>Add</Text>
-          </Pressable>} />
+          </Pressable>
+        <Pressable style={[styles.bulkChip, bulkEntryIds.length === 0 && styles.disabled]} onPress={() => setBulkOpen(true)} disabled={bulkEntryIds.length === 0}>
+          <Ionicons name="checkmark-done-outline" size={15} color={theme.colors.settled} />
+          <Text style={styles.bulkChipLabel}>{bulkLabel}</Text>
+        </Pressable>
+      </View>} />
 
       <View style={[styles.table, compact && styles.compactTable]}>
         {!compact && <View style={styles.headerRow}>
@@ -125,7 +151,7 @@ export default function LedgerScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>
-                {type === 'owed' ? `No ${direction === 'payable' ? 'unpaid debts' : 'outstanding entries'} for this period.` : 'No paid entries for this period.'}
+                {type === 'owed' ? `No ${payable ? 'owe' : 'owed'} entries for this period.` : `No ${settledLabel.toLowerCase()} for this period.`}
               </Text>
             </View>
           }
@@ -159,7 +185,7 @@ export default function LedgerScreen() {
                       setPayingId(item.id);
                     }}
                   >
-                    <Text style={styles.markBtnText}>{direction === 'payable' ? 'Pay' : 'Paid'}</Text>
+                    <Text style={styles.markBtnText}>{payable ? 'Pay' : 'Returned'}</Text>
                   </Pressable>
                 ) : (
                   <Pressable
@@ -168,7 +194,7 @@ export default function LedgerScreen() {
                       e.stopPropagation?.();
                       markOwed(item.id);
                     }}
-                    accessibilityLabel="Move back to owed"
+                    accessibilityLabel={`Move back to ${owedLabel}`}
                   >
                     <Ionicons name="arrow-undo-outline" size={16} color={theme.colors.inkSoft} />
                   </Pressable>
@@ -181,7 +207,7 @@ export default function LedgerScreen() {
       </View>
 
       <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>{type === 'owed' ? (direction === 'payable' ? 'Total unpaid' : 'Total owed') : 'Total settled'}</Text>
+        <Text style={styles.totalLabel}>{type === 'owed' ? `Total ${owedLabel.toLowerCase()}` : `Total ${settledLabel.toLowerCase()}`}</Text>
         <Text style={[styles.totalValue, type === 'owed' ? styles.amountText : styles.amountPaid]}>
           {fmtCurrency(total, settings.currency)}
         </Text>
@@ -253,10 +279,21 @@ export default function LedgerScreen() {
         </View>
       </Sheet>
       <Sheet visible={Boolean(payingId)} onClose={() => setPayingId(null)}>
-        <Text style={styles.sheetTitle}>{direction === 'payable' ? 'How will you pay this?' : 'Where was this paid?'}</Text>
-        <AccountPicker value={paidAccountId} onChange={setPaidAccountId} label={direction === 'payable' ? 'Pay from' : 'Receive into'} />
-        <Pressable style={[styles.sheetBtn, styles.sheetBtnPrimary]} onPress={() => { receiveEntry(payingId, paidAccountId); setPayingId(null); }}>
-          <Text style={styles.sheetBtnPrimaryText}>{direction === 'payable' ? 'Confirm payment' : 'Confirm paid'}</Text>
+        <Text style={styles.sheetTitle}>{payable ? 'How will you pay this?' : 'Where was this returned?'}</Text>
+        <AccountPicker value={paidAccountId} onChange={setPaidAccountId} label={payable ? 'Pay from' : 'Return into'} />
+        <Pressable
+          style={[styles.sheetBtn, styles.sheetBtnPrimary, !paidAccountId && styles.sheetBtnDisabled]}
+          onPress={() => { receiveEntry(payingId, paidAccountId); setPayingId(null); }}
+          disabled={!paidAccountId}
+        >
+          <Text style={styles.sheetBtnPrimaryText}>{payable ? 'Confirm payment' : 'Confirm return'}</Text>
+        </Pressable>
+      </Sheet>
+      <Sheet visible={bulkOpen} onClose={() => setBulkOpen(false)}>
+        <Text style={styles.sheetTitle}>{bulkLabel}</Text>
+        <AccountPicker value={paidAccountId} onChange={setPaidAccountId} label={payable ? 'Pay from' : 'Return into'} />
+        <Pressable style={[styles.sheetBtn, styles.sheetBtnPrimary, (!paidAccountId || bulkEntryIds.length === 0) && styles.sheetBtnDisabled]} onPress={confirmBulk} disabled={!paidAccountId || bulkEntryIds.length === 0}>
+          <Text style={styles.sheetBtnPrimaryText}>{bulkLabel}</Text>
         </Pressable>
       </Sheet>
     </View>
@@ -277,6 +314,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing(3),
     paddingVertical: theme.spacing(1.5),
     borderRadius: theme.radius.sm,
+  },
+  filterActions: {
+    flexDirection: 'row',
+    gap: theme.spacing(2),
+  },
+  bulkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: theme.colors.settledSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.settled,
+    paddingHorizontal: theme.spacing(2),
+    paddingVertical: theme.spacing(1.5),
+    borderRadius: theme.radius.sm,
+  },
+  bulkChipLabel: {
+    color: theme.colors.settled,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  disabled: {
+    opacity: 0.45,
   },
   addChipLabel: {
     color: theme.colors.surface,

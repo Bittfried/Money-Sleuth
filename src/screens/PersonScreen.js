@@ -9,13 +9,17 @@ import Avatar from '../components/Avatar';
 
 export default function PersonScreen() {
   const router = useRouter();
-  const { personId, direction = 'receivable' } = useLocalSearchParams();
-  const { people, balanceFor, entriesFor, removePerson, updatePerson, settings } = useData();
+  const { personId } = useLocalSearchParams();
+  const { people, balanceFor, entriesFor, removePerson, updatePerson, settlePersonQuits, settings } = useData();
   const person = people.find((p) => p.id === personId);
 
-  const balance = balanceFor(personId, direction);
-  const owedCount = entriesFor(personId, 'owed', direction).length;
-  const paidCount = entriesFor(personId, 'paid', direction).length;
+  const owedBalance = balanceFor(personId, 'receivable');
+  const oweBalance = balanceFor(personId, 'payable');
+  const netBalance = owedBalance - oweBalance;
+  const owedCount = entriesFor(personId, 'owed', 'receivable').length;
+  const returnsCount = entriesFor(personId, 'paid', 'receivable').length;
+  const oweCount = entriesFor(personId, 'owed', 'payable').length;
+  const paidCount = entriesFor(personId, 'paid', 'payable').length;
 
   if (!person) return null;
 
@@ -37,6 +41,17 @@ export default function PersonScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Change', onPress: () => updatePerson(personId, { photo }) },
     ]);
+  };
+  const confirmQuits = () => {
+    if (owedCount + oweCount === 0) return;
+    Alert.alert(
+      'Call it quits?',
+      `Mark all Owed and Owe entries with ${person.name} as settled without moving money between funds?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Quits', style: 'destructive', onPress: () => settlePersonQuits(personId) },
+      ]
+    );
   };
 
   return (
@@ -81,35 +96,68 @@ export default function PersonScreen() {
         <Text style={styles.name}>{person.name}</Text>
 
         <View style={styles.balanceBlock}>
-          <Text style={styles.balanceLabel}>{direction === 'payable' ? 'You currently owe' : 'Currently owes you'}</Text>
+          <Text style={styles.balanceLabel}>Owed - Owe</Text>
           <Text
-            style={[styles.balanceValue, balance > 0 ? styles.owedText : styles.zeroText]}
+            style={[styles.balanceValue, netBalance !== 0 ? styles.owedText : styles.zeroText]}
             numberOfLines={1}
             adjustsFontSizeToFit
           >
-            {fmtCurrency(balance, settings.currency)}
+            {fmtCurrency(netBalance, settings.currency)}
           </Text>
+          <View style={styles.balanceSplit}>
+            <View style={styles.balanceMetric}>
+              <Text style={styles.actionCount}>Owed</Text>
+              <Text style={[styles.smallMoney, owedBalance > 0 ? styles.owedText : styles.zeroText]}>{fmtCurrency(owedBalance, settings.currency)}</Text>
+            </View>
+            <View style={styles.splitDivider} />
+            <View style={styles.balanceMetric}>
+              <Text style={styles.actionCount}>Owe</Text>
+              <Text style={[styles.smallMoney, oweBalance > 0 ? styles.owedText : styles.zeroText]}>{fmtCurrency(oweBalance, settings.currency)}</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.actionsRow}>
           <Pressable
             style={[styles.actionBtn, styles.owedBtn]}
-            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'owed', direction } })}
+            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'owed', direction: 'receivable' } })}
           >
             <Ionicons name="receipt-outline" size={20} color={theme.colors.owed} />
-            <Text style={[styles.actionLabel, styles.owedText]}>{direction === 'payable' ? 'Unpaid' : 'Owed'}</Text>
+            <Text style={[styles.actionLabel, styles.owedText]}>Owed</Text>
             <Text style={styles.actionCount}>{owedCount} entr{owedCount === 1 ? 'y' : 'ies'}</Text>
           </Pressable>
 
           <Pressable
             style={[styles.actionBtn, styles.paidBtn]}
-            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'paid', direction } })}
+            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'paid', direction: 'receivable' } })}
+          >
+            <Ionicons name="return-down-back-outline" size={20} color={theme.colors.settled} />
+            <Text style={[styles.actionLabel, styles.settledText]}>Returns</Text>
+            <Text style={styles.actionCount}>{returnsCount} entr{returnsCount === 1 ? 'y' : 'ies'}</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.actionBtn, styles.owedBtn]}
+            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'owed', direction: 'payable' } })}
+          >
+            <Ionicons name="reader-outline" size={20} color={theme.colors.owed} />
+            <Text style={[styles.actionLabel, styles.owedText]}>Owe</Text>
+            <Text style={styles.actionCount}>{oweCount} entr{oweCount === 1 ? 'y' : 'ies'}</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.actionBtn, styles.paidBtn]}
+            onPress={() => router.push({ pathname: '/ledger/[personId]', params: { personId, type: 'paid', direction: 'payable' } })}
           >
             <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.settled} />
             <Text style={[styles.actionLabel, styles.settledText]}>Paid</Text>
             <Text style={styles.actionCount}>{paidCount} entr{paidCount === 1 ? 'y' : 'ies'}</Text>
           </Pressable>
         </View>
+        <Pressable style={[styles.quitBtn, owedCount + oweCount === 0 && styles.disabled]} onPress={confirmQuits} disabled={owedCount + oweCount === 0}>
+          <Ionicons name="hand-left-outline" size={18} color={theme.colors.gold} />
+          <Text style={styles.quitText}>Quits</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
@@ -183,11 +231,12 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: theme.spacing(3),
     width: '100%',
   },
   actionBtn: {
-    flex: 1,
+    width: '47%',
     borderRadius: theme.radius.md,
     borderWidth: 1,
     paddingVertical: theme.spacing(4),
@@ -209,5 +258,45 @@ const styles = StyleSheet.create({
   actionCount: {
     fontSize: 11,
     color: theme.colors.inkSoft,
+  },
+  balanceSplit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing(3),
+    minWidth: 220,
+  },
+  balanceMetric: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  smallMoney: {
+    fontFamily: theme.fonts.mono,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  splitDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: theme.colors.line,
+  },
+  quitBtn: {
+    marginTop: theme.spacing(2),
+    width: '100%',
+    minHeight: 46,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.gold,
+    backgroundColor: theme.colors.goldSoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(2),
+  },
+  quitText: {
+    color: theme.colors.gold,
+    fontWeight: '700',
+  },
+  disabled: {
+    opacity: 0.45,
   },
 });

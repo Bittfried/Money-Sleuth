@@ -477,9 +477,9 @@ function normalizeImportedState(input) {
   state.entries = state.entries
     .filter((item) => item && typeof item.id === 'string' && personIds.has(item.personId) && positiveAmount(item.amount) && isValidIsoDate(item.date))
     .map((item) => {
-      const paid = item.status === 'paid' && accountIds.has(item.paidAccountId);
+      const paid = item.status === 'paid' && (item.paidAccountId == null || accountIds.has(item.paidAccountId));
       const direction = item.direction === 'payable' ? 'payable' : 'receivable';
-      return { ...item, direction, note: String(item.note ?? 'Entry'), amount: positiveAmount(item.amount), sourceAccountId: direction === 'receivable' && accountIds.has(item.sourceAccountId) ? item.sourceAccountId : null, status: paid ? 'paid' : 'owed', paidAccountId: paid ? item.paidAccountId : null, paidDate: paid && isValidIsoDate(item.paidDate) ? item.paidDate : null };
+      return { ...item, direction, note: String(item.note ?? 'Entry'), amount: positiveAmount(item.amount), sourceAccountId: direction === 'receivable' && accountIds.has(item.sourceAccountId) ? item.sourceAccountId : null, status: paid ? 'paid' : 'owed', paidAccountId: paid && accountIds.has(item.paidAccountId) ? item.paidAccountId : null, paidDate: paid && isValidIsoDate(item.paidDate) ? item.paidDate : null };
     });
   state.expenses = state.expenses
     .filter((item) => item && typeof item.id === 'string' && accountIds.has(item.accountId) && positiveAmount(item.amount) && isValidIsoDate(item.date))
@@ -612,7 +612,34 @@ export function DataProvider({ children }) {
       if (!entry || entry.status !== 'owed' || !hasAccount(s, accountId)) return s;
       s.entries = s.entries.map((item) => item.id === id ? { ...item, status: 'paid', paidDate: today(), paidAccountId: accountId } : item);
       const amount = entry.direction === 'payable' ? -entry.amount : entry.amount;
-      return recordAccountMovement(s, accountId, amount, { type: entry.direction === 'payable' ? 'debt_paid' : 'credit_received', note: entry.note, referenceId: id });
+      s = recordAccountMovement(s, accountId, amount, { type: entry.direction === 'payable' ? 'debt_paid' : 'credit_received', note: entry.note, referenceId: id });
+      return entry.direction === 'payable' ? invalidateBudget(s) : s;
+    });
+    const receiveEntriesForPerson = (personId, direction, accountId, entryIds = null) => update((s) => {
+      const entryDirection = direction === 'payable' ? 'payable' : 'receivable';
+      if (!hasAccount(s, accountId)) return s;
+      const idFilter = Array.isArray(entryIds) ? new Set(entryIds) : null;
+      const entries = s.entries.filter((item) =>
+        item.personId === personId
+        && item.direction === entryDirection
+        && item.status === 'owed'
+        && (!idFilter || idFilter.has(item.id))
+      );
+      if (entries.length === 0) return s;
+      const ids = new Set(entries.map((item) => item.id));
+      s.entries = s.entries.map((item) => ids.has(item.id) ? { ...item, status: 'paid', paidDate: today(), paidAccountId: accountId } : item);
+      for (const entry of entries) {
+        const amount = entryDirection === 'payable' ? -entry.amount : entry.amount;
+        s = recordAccountMovement(s, accountId, amount, { type: entryDirection === 'payable' ? 'debt_paid' : 'credit_received', note: entry.note, referenceId: entry.id });
+      }
+      return entryDirection === 'payable' ? invalidateBudget(s) : s;
+    });
+    const settlePersonQuits = (personId) => update((s) => {
+      const entries = s.entries.filter((item) => item.personId === personId && item.status === 'owed');
+      if (entries.length === 0) return s;
+      const ids = new Set(entries.map((item) => item.id));
+      s.entries = s.entries.map((item) => ids.has(item.id) ? { ...item, status: 'paid', paidDate: today(), paidAccountId: null } : item);
+      return entries.some((item) => item.direction === 'payable') ? invalidateBudget(s) : s;
     });
     const markOwed = (id) => update((s) => {
       const entry = s.entries.find((item) => item.id === id);
@@ -622,7 +649,7 @@ export function DataProvider({ children }) {
         s = recordAccountMovement(s, entry.paidAccountId, amount, { type: 'reversal', note: `Moved back to ${entry.direction === 'payable' ? 'unpaid' : 'owed'}: ${entry.note}`, referenceId: id });
       }
       s.entries = s.entries.map((item) => item.id === id ? { ...item, status: 'owed', paidDate: null, paidAccountId: null } : item);
-      return s;
+      return entry.direction === 'payable' ? invalidateBudget(s) : s;
     });
     const deleteEntry = (id) => update((s) => {
       const entry = s.entries.find((item) => item.id === id);
@@ -848,9 +875,9 @@ export function DataProvider({ children }) {
     return {
       loaded: true, ...state, piggyBankBalance: Number(state.piggyBankBalance) || 0, piggyBankTransactions: state.piggyBankTransactions ?? [], people: state.people.filter((item) => !item.archived), totalOutstanding, totalPayable, totalFunds, spendable, budgetableSpendable, budgetSummary,
       totalExpenses: state.expenses.reduce((sum, item) => sum + item.amount, 0),
-      addPerson, updatePerson, removePerson, addEntry, editEntry, receiveEntry, markOwed, deleteEntry,
+      addPerson, updatePerson, removePerson, addEntry, editEntry, receiveEntry, receiveEntriesForPerson, settlePersonQuits, markOwed, deleteEntry,
       addAccount, editAccount, addExpense, editExpense, deleteExpense, addIncome, addRecurringPayment, updateRecurringPayment,
-      deleteRecurringPayment, updateSettings, configureAutoExport, completeAutoExport, depositPiggyBank, withdrawPiggyBank, breakPiggyBank, balanceFor, entriesFor, lastActivityFor,
+      deleteRecurringPayment, updateSettings, configureAutoExport, completeAutoExport, depositPiggyBank, withdrawPiggyBank, breakPiggyBank, balanceFor, entriesFor, lastActivityFor, resetData,
       exportData: (groups = ['all']) => {
         const selected = groups.includes('all') ? Object.keys(EXPORT_GROUPS) : groups.filter((group) => EXPORT_GROUPS[group]);
         const data = selected.flatMap((group) => EXPORT_GROUPS[group]).reduce((result, key) => ({ ...result, [key]: state[key] }), {});
@@ -881,6 +908,46 @@ export function DataProvider({ children }) {
         update((s) => {
           for (const key of STATE_ARRAY_KEYS) {
             const ids = new Set(s[key].map((item) => item.id)); s[key].push(...(incoming[key] ?? []).filter((item) => !ids.has(item.id)));
+          }
+          return s;
+        });
+      },
+      resetData: (groups) => {
+        if (!groups || groups.length === 0) return;
+        if (groups.includes('all')) {
+          const accountId = uid();
+          save(refreshBudgetSnapshots(processDailyBudgetRollovers({
+            people: [],
+            entries: [],
+            expenses: [],
+            accounts: [{ id: accountId, type: 'physical', name: 'Cash', balance: 0 }],
+            incomes: [],
+            recurringPayments: [],
+            piggyBankBalance: 0,
+            piggyBankTransactions: [],
+            transactions: [],
+            settings: { ...DEFAULT_SETTINGS, incomeAccountId: accountId, initialPeopleCleared: true, creditSourcesMigrated: true },
+          })));
+          return;
+        }
+        update((s) => {
+          const keys = new Set(groups.flatMap((group) => RESTORE_GROUPS[group] ?? []));
+          for (const key of keys) {
+            if (key === 'accounts') {
+              const accountId = uid();
+              s.accounts = [{ id: accountId, type: 'physical', name: 'Cash', balance: 0 }];
+              s.settings.incomeAccountId = accountId;
+            } else if (key === 'piggyBankBalance') {
+              s.piggyBankBalance = 0;
+            } else if (key === 'piggyBankTransactions') {
+              s.piggyBankTransactions = [];
+            } else if (key === 'settings') {
+              const keepTheme = s.settings.themeMode;
+              const keepCurrency = s.settings.currency;
+              s.settings = { ...DEFAULT_SETTINGS, themeMode: keepTheme, currency: keepCurrency, incomeAccountId: s.accounts[0]?.id ?? null, initialPeopleCleared: true, creditSourcesMigrated: true };
+            } else if (Array.isArray(s[key])) {
+              s[key] = [];
+            }
           }
           return s;
         });

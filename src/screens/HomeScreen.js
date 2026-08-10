@@ -28,18 +28,17 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { people, balanceFor, addPerson, lastActivityFor, settings, totalOutstanding, totalPayable } = useData();
-  const [direction, setDirection] = useState('receivable');
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState('');
   const [photo, setPhoto] = useState(null);
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState('balance');
   const [sortOpen, setSortOpen] = useState(false);
-
-  const total = direction === 'receivable' ? totalOutstanding : totalPayable;
+  const netTotal = totalOutstanding - totalPayable;
 
   const lastActivityLabel = (personId) => {
-    const date = lastActivityFor(personId, direction);
+    const dates = [lastActivityFor(personId, 'receivable'), lastActivityFor(personId, 'payable')].filter(Boolean).sort();
+    const date = dates.at(-1);
     if (!date) return 'No activity yet';
     const diffDays = Math.floor((Date.now() - parseLocalDate(date).getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays <= 0) return 'Last activity today';
@@ -57,13 +56,15 @@ export default function HomeScreen() {
     }
     const sorted = [...list];
     if (sortBy === 'balance') {
-      sorted.sort((a, b) => balanceFor(b.id, direction) - balanceFor(a.id, direction));
+      sorted.sort((a, b) =>
+        (balanceFor(b.id, 'receivable') + balanceFor(b.id, 'payable')) - (balanceFor(a.id, 'receivable') + balanceFor(a.id, 'payable'))
+      );
     } else if (sortBy === 'name') {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortBy === 'recent') {
       sorted.sort((a, b) => {
-        const da = lastActivityFor(a.id, direction);
-        const db = lastActivityFor(b.id, direction);
+        const da = [lastActivityFor(a.id, 'receivable'), lastActivityFor(a.id, 'payable')].filter(Boolean).sort().at(-1);
+        const db = [lastActivityFor(b.id, 'receivable'), lastActivityFor(b.id, 'payable')].filter(Boolean).sort().at(-1);
         if (!da && !db) return 0;
         if (!da) return 1;
         if (!db) return -1;
@@ -71,7 +72,7 @@ export default function HomeScreen() {
       });
     }
     return sorted;
-  }, [people, query, sortBy, direction, balanceFor, lastActivityFor]);
+  }, [people, query, sortBy, balanceFor, lastActivityFor]);
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -115,14 +116,6 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View>
-            <View style={styles.directionTabs}>
-              <Pressable style={[styles.directionTab, direction === 'receivable' && styles.directionTabActive]} onPress={() => setDirection('receivable')}>
-                <Text style={[styles.directionText, direction === 'receivable' && styles.directionTextActive]}>Owed to you</Text>
-              </Pressable>
-              <Pressable style={[styles.directionTab, direction === 'payable' && styles.directionTabActive]} onPress={() => setDirection('payable')}>
-                <Text style={[styles.directionText, direction === 'payable' && styles.directionTextActive]}>You owe</Text>
-              </Pressable>
-            </View>
             <View style={styles.searchRow}>
               <View style={styles.searchBox}>
                 <Ionicons name="search" size={16} color={theme.colors.inkFaint} />
@@ -152,14 +145,20 @@ export default function HomeScreen() {
 
             {people.length > 0 && (
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{direction === 'receivable' ? 'Total owed to you' : 'Total you owe'}</Text>
-                <Text
-                  style={[styles.totalValue, total > 0 ? styles.owedText : styles.zeroText]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {fmtCurrency(total, settings.currency)}
-                </Text>
+                <View style={styles.totalMetric}>
+                  <Text style={styles.totalLabel}>Owed</Text>
+                  <Text style={[styles.totalValue, totalOutstanding > 0 ? styles.owedText : styles.zeroText]} numberOfLines={1} adjustsFontSizeToFit>{fmtCurrency(totalOutstanding, settings.currency)}</Text>
+                </View>
+                <View style={styles.totalDivider} />
+                <View style={styles.totalMetric}>
+                  <Text style={styles.totalLabel}>Owed - Owe</Text>
+                  <Text style={[styles.totalValue, netTotal !== 0 ? styles.owedText : styles.zeroText]} numberOfLines={1} adjustsFontSizeToFit>{fmtCurrency(netTotal, settings.currency)}</Text>
+                </View>
+                <View style={styles.totalDivider} />
+                <View style={styles.totalMetric}>
+                  <Text style={styles.totalLabel}>Owe</Text>
+                  <Text style={[styles.totalValue, totalPayable > 0 ? styles.owedText : styles.zeroText]} numberOfLines={1} adjustsFontSizeToFit>{fmtCurrency(totalPayable, settings.currency)}</Text>
+                </View>
               </View>
             )}
           </View>
@@ -175,29 +174,29 @@ export default function HomeScreen() {
             <Text style={styles.emptyBody}>
               {query
                 ? `No one named "${query}" yet.`
-                : direction === 'receivable' ? 'Add someone to start tracking what they owe you.' : 'Add someone to start tracking what you owe them.'}
+                : 'Add someone to start tracking money owed in either direction.'}
             </Text>
           </View>
         }
         renderItem={({ item }) => {
-          const balance = balanceFor(item.id, direction);
+          const owed = balanceFor(item.id, 'receivable');
+          const owe = balanceFor(item.id, 'payable');
           return (
             <Pressable
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-              onPress={() => router.push({ pathname: '/person/[personId]', params: { personId: item.id, direction } })}
+              onPress={() => router.push({ pathname: '/person/[personId]', params: { personId: item.id } })}
             >
               <Avatar name={item.name} photo={item.photo} size={48} />
               <View style={styles.cardInfo}>
                 <Text style={styles.cardName}>{item.name}</Text>
                 <Text style={styles.cardSub}>{lastActivityLabel(item.id)}</Text>
               </View>
-              <Text
-                style={[styles.cardAmount, balance > 0 ? styles.owedText : styles.zeroText]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {fmtCurrency(balance, settings.currency)}
-              </Text>
+              <View style={styles.cardAmounts}>
+                <Text style={styles.cardAmountLabel}>Owed</Text>
+                <Text style={[styles.cardAmount, owed > 0 ? styles.owedText : styles.zeroText]} numberOfLines={1} adjustsFontSizeToFit>{fmtCurrency(owed, settings.currency)}</Text>
+                <Text style={styles.cardAmountLabel}>Owe</Text>
+                <Text style={[styles.cardAmount, owe > 0 ? styles.owedText : styles.zeroText]} numberOfLines={1} adjustsFontSizeToFit>{fmtCurrency(owe, settings.currency)}</Text>
+              </View>
             </Pressable>
           );
         }}
@@ -275,31 +274,6 @@ const styles = StyleSheet.create({
     padding: theme.spacing(4),
     paddingBottom: theme.spacing(24),
   },
-  directionTabs: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surfaceAlt,
-    borderRadius: theme.radius.md,
-    padding: 3,
-    marginBottom: theme.spacing(3),
-  },
-  directionTab: {
-    flex: 1,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.radius.sm,
-  },
-  directionTabActive: {
-    backgroundColor: theme.colors.accent,
-  },
-  directionText: {
-    color: theme.colors.inkSoft,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  directionTextActive: {
-    color: theme.colors.surface,
-  },
   searchRow: {
     flexDirection: 'row',
     gap: theme.spacing(2),
@@ -334,8 +308,7 @@ const styles = StyleSheet.create({
   },
   totalRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'center',
     paddingHorizontal: theme.spacing(2),
     paddingBottom: theme.spacing(4),
     borderBottomWidth: 1,
@@ -343,13 +316,24 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing(3),
   },
   totalLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: theme.colors.inkSoft,
+    textAlign: 'center',
   },
   totalValue: {
-    fontSize: 22,
+    fontSize: 18,
     fontFamily: theme.fonts.mono,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  totalMetric: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  totalDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: theme.colors.line,
   },
   card: {
     flexDirection: 'row',
@@ -380,9 +364,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   cardAmount: {
-    fontSize: 16,
+    fontSize: 13,
     fontFamily: theme.fonts.mono,
     fontWeight: '600',
+  },
+  cardAmounts: {
+    width: 92,
+    alignItems: 'flex-end',
+    gap: 1,
+  },
+  cardAmountLabel: {
+    fontSize: 10,
+    color: theme.colors.inkSoft,
   },
   owedText: {
     color: theme.colors.owed,
