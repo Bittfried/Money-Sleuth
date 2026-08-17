@@ -877,7 +877,7 @@ export function DataProvider({ children }) {
       totalExpenses: state.expenses.reduce((sum, item) => sum + item.amount, 0),
       addPerson, updatePerson, removePerson, addEntry, editEntry, receiveEntry, receiveEntriesForPerson, settlePersonQuits, markOwed, deleteEntry,
       addAccount, editAccount, addExpense, editExpense, deleteExpense, addIncome, addRecurringPayment, updateRecurringPayment,
-      deleteRecurringPayment, updateSettings, configureAutoExport, completeAutoExport, depositPiggyBank, withdrawPiggyBank, breakPiggyBank, balanceFor, entriesFor, lastActivityFor, resetData,
+      deleteRecurringPayment, updateSettings, configureAutoExport, completeAutoExport, depositPiggyBank, withdrawPiggyBank, breakPiggyBank, balanceFor, entriesFor, lastActivityFor,
       exportData: (groups = ['all']) => {
         const selected = groups.includes('all') ? Object.keys(EXPORT_GROUPS) : groups.filter((group) => EXPORT_GROUPS[group]);
         const data = selected.flatMap((group) => EXPORT_GROUPS[group]).reduce((result, key) => ({ ...result, [key]: state[key] }), {});
