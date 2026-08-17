@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   PanResponder,
   Platform,
@@ -13,14 +13,45 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme';
 
+// Android edge-to-edge windows do not resize for the keyboard, and RN Modal renders in its own
+// window where adjustResize does not apply either. So track the keyboard and inset manually
+// instead of relying on KeyboardAvoidingView.
+function useKeyboardHeight() {
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    const ios = Platform.OS === 'ios';
+    const showSub = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', (event) =>
+      setHeight(event.endCoordinates?.height ?? 0)
+    );
+    const hideSub = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => setHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  return height;
+}
+
 export default function Sheet({ visible, onClose, children, variant = 'bottom' }) {
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(0)).current;
   const centered = variant === 'center';
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardOpen = keyboardHeight > 0;
 
   useEffect(() => {
     if (visible) translateY.setValue(0);
   }, [translateY, visible]);
+
+  // Only dismiss on an actual open -> closed transition. Sheets mount alongside screens that own
+  // their own inputs (such as the Home search field), so dismissing on mount would steal focus.
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (wasVisible.current && !visible) Keyboard.dismiss();
+    wasVisible.current = visible;
+  }, [visible]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -38,13 +69,18 @@ export default function Sheet({ visible, onClose, children, variant = 'bottom' }
     })
   ).current;
 
+  // Padding on the flex container shrinks its content box, so the panel's percentage maxHeight
+  // resolves against the space left above the keyboard rather than the whole screen.
+  const avoiderPadding = keyboardHeight + (centered ? theme.spacing(4) : 0);
+  // Once the keyboard covers the bottom edge, the safe-area inset no longer needs reserving.
+  const panelPaddingBottom = centered || keyboardOpen ? theme.spacing(5) : Math.max(insets.bottom, theme.spacing(5));
+
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.modal}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.avoider, centered && styles.avoiderCentered]}
+        <View
+          style={[styles.avoider, centered && styles.avoiderCentered, { paddingBottom: avoiderPadding }]}
           pointerEvents="box-none"
         >
           <Animated.View
@@ -52,7 +88,7 @@ export default function Sheet({ visible, onClose, children, variant = 'bottom' }
             style={[
               styles.panel,
               centered ? styles.dialog : styles.sheet,
-              { paddingBottom: centered ? theme.spacing(5) : Math.max(insets.bottom, theme.spacing(5)) },
+              { paddingBottom: panelPaddingBottom },
               !centered && { transform: [{ translateY }] },
             ]}
           >
@@ -70,7 +106,7 @@ export default function Sheet({ visible, onClose, children, variant = 'bottom' }
               {children}
             </ScrollView>
           </Animated.View>
-        </KeyboardAvoidingView>
+        </View>
       </View>
     </Modal>
   );
@@ -79,7 +115,7 @@ export default function Sheet({ visible, onClose, children, variant = 'bottom' }
 const styles = StyleSheet.create({
   modal: { flex: 1, backgroundColor: 'rgba(43,42,38,0.46)' },
   avoider: { flex: 1, justifyContent: 'flex-end' },
-  avoiderCentered: { justifyContent: 'center', padding: theme.spacing(4) },
+  avoiderCentered: { justifyContent: 'center', paddingHorizontal: theme.spacing(4), paddingTop: theme.spacing(4) },
   panel: {
     backgroundColor: theme.colors.bg,
     borderWidth: 1,
